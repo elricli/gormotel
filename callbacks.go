@@ -56,18 +56,20 @@ func (p plugin) afterRaw(db *gorm.DB) {
 }
 
 func (p plugin) before(name string, db *gorm.DB) {
-	if !trace.SpanFromContext(db.Statement.Context).IsRecording() {
+	stmt := db.Statement
+	if !trace.SpanFromContext(stmt.Context).IsRecording() {
 		return
 	}
-	ctx, span := p.tracer.Start(db.Statement.Context, name)
+	ctx, span := p.tracer.Start(stmt.Context, name)
 	span.SetAttributes(
-		attribute.String("gorm.table", db.Statement.Table),
+		attribute.String("gorm.table", stmt.Table),
 	)
-	db.Statement.Context = ctx
+	stmt.Context = ctx
 }
 
 func (p plugin) after(db *gorm.DB) {
-	span := trace.SpanFromContext(db.Statement.Context)
+	stmt := db.Statement
+	span := trace.SpanFromContext(stmt.Context)
 	if db.Error != nil && db.Error != gorm.ErrRecordNotFound {
 		span.RecordError(db.Error)
 		span.SetStatus(codes.Error, db.Error.Error())
@@ -75,7 +77,7 @@ func (p plugin) after(db *gorm.DB) {
 		span.SetStatus(codes.Ok, "OK")
 	}
 	span.SetAttributes(
-		attribute.String("gorm.statement", db.Statement.SQL.String()),
+		attribute.String("gorm.statement", db.Dialector.Explain(stmt.SQL.String(), stmt.Vars...)),
 		attribute.Int64("gorm.rowsAffected", db.RowsAffected),
 	)
 	span.End()
